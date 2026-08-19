@@ -12,11 +12,16 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: exhaustive-yupoo-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
 jobs:
   scrape:
+    if: github.event_name != 'pull_request' || github.head_ref != 'run-yupoo-fast-audit'
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
