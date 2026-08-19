@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from pathlib import Path
 
@@ -26,11 +28,22 @@ def main():
     categories = base.discover_categories()
     print(f'Selected categories: {len(categories)}')
 
+    # Category listing requests are independent. Moderate parallelism shortens the
+    # exact-pagination pass without hammering album detail pages.
+    category_results = {}
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        futures = {ex.submit(v2.scrape_category, c): c for c in categories}
+        for fut in as_completed(futures):
+            c = futures[fut]
+            albums = fut.result()
+            category_results[str(c['id'])] = albums
+            print(f"DONE CATEGORY {c['name']!r}: {len(albums)} albums")
+
     all_albums = {}
     membership = {}
     per_category_counts = {}
     for c in categories:
-        albums = v2.scrape_category(c)
+        albums = category_results[str(c['id'])]
         per_category_counts[c['name']] = len(albums)
         for a in albums:
             membership.setdefault(a.album_id, set()).add(a.category_name)
@@ -40,7 +53,7 @@ def main():
 
     accepted, excluded = [], []
     for a in all_albums.values():
-        if __import__('re').search(r'\bpet\b', a.source_title, __import__('re').I):
+        if re.search(r'\bpet\b', a.source_title, re.I):
             excluded.append(asdict(a))
             continue
         x = base.classify(a)
