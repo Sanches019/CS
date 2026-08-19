@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'scrape_yupoo.py'
+      - 'scrape_yupoo_v2.py'
       - 'requirements.txt'
       - '.github/workflows/scrape-yupoo.yml'
   pull_request:
@@ -26,12 +27,12 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Scrape and audit source catalog
-        run: python -u scrape_yupoo.py
+        run: python -u scrape_yupoo_v2.py
       - name: Upload catalog audit artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: yupoo-football-shirt-catalog
+          name: yupoo-football-shirt-catalog-v2
           path: out/
           retention-days: 7
           if-no-files-found: error
