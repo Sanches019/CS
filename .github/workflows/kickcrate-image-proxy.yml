@@ -1,8 +1,8 @@
 name: KickCrate authorized image relay
 
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches: [kickcrate-image-proxy]
     paths:
       - '.github/workflows/kickcrate-image-proxy.yml'
       - 'kickcrate_proxy_trigger.txt'
@@ -33,7 +33,7 @@ jobs:
       - name: Write relay server
         run: |
           cat > /tmp/relay.py <<'PY'
-          import json, os, re
+          import json, re
           from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
           from urllib.parse import urlparse
           import requests
@@ -54,10 +54,9 @@ jobs:
                   x=by_id.get(album)
                   if not x or idx<0 or idx>=len(x.get('images',[])):
                       self.send_error(404); return
-                  src=x['images'][idx]
                   headers={'User-Agent':UA,'Referer':x['source_url'],'Accept':'image/avif,image/webp,image/apng,image/*,*/*;q=0.8','Sec-Fetch-Mode':'no-cors','Sec-Fetch-Site':'same-site','Sec-Fetch-Dest':'image'}
                   try:
-                      r=sess.get(src,headers=headers,timeout=45)
+                      r=sess.get(x['images'][idx],headers=headers,timeout=45)
                       if r.status_code!=200 or not r.headers.get('content-type','').startswith('image/'):
                           self.send_error(502, f'upstream {r.status_code}'); return
                       self.send_response(200)
