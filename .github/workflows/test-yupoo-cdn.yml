@@ -1,0 +1,39 @@
+name: Test Yupoo CDN image fetch
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/test-yupoo-cdn.yml'
+      - 'yupoo_cdn_probe.txt'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe image delivery modes
+        shell: bash
+        run: |
+          set +e
+          URL='https://photo.yupoo.com/194939/9a2b71cd/f9c3b12d.jpg'
+          REF='https://194939.x.yupoo.com/albums/160463969?uid=1'
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36'
+          mkdir -p cdn_probe
+          test_one() {
+            name="$1"; shift
+            code=$(curl -L --max-time 30 -sS -o "cdn_probe/$name.bin" -w '%{http_code}' "$@" "$URL")
+            size=$(wc -c < "cdn_probe/$name.bin" 2>/dev/null || echo 0)
+            type=$(file -b --mime-type "cdn_probe/$name.bin" 2>/dev/null || true)
+            printf '%s\t%s\t%s\t%s\n' "$name" "$code" "$size" "$type" >> cdn_probe/results.tsv
+          }
+          test_one plain
+          test_one ua -A "$UA"
+          test_one referer -e "$REF"
+          test_one both -A "$UA" -e "$REF"
+          cat cdn_probe/results.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yupoo-cdn-probe
+          path: cdn_probe/
+          retention-days: 2
