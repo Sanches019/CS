@@ -1,0 +1,50 @@
+name: Fast exact Yupoo football-shirt audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scrape_yupoo.py'
+      - 'scrape_yupoo_v2.py'
+      - 'scrape_yupoo_fast.py'
+      - '.github/workflows/scrape-yupoo-fast.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Download prior verified gallery audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p previous
+          curl --fail --location \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/9366586021/zip" \
+            --output /tmp/previous.zip
+          unzip -q /tmp/previous.zip -d previous
+          test -s previous/catalog.json
+      - name: Rebuild exact catalogue and QA
+        run: python -u scrape_yupoo_fast.py
+      - name: Upload exact catalog audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yupoo-football-shirt-catalog-fast
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
