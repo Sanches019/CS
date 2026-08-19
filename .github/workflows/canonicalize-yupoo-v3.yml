@@ -40,3 +40,5 @@ jobs:
           name: yupoo-football-shirt-catalog-v3
           path: out_v3/
           retention-days: 14
+
+# Trigger marker: v3 canonicalization ready.
