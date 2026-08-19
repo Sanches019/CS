@@ -1,0 +1,76 @@
+name: KickCrate authorized image relay
+
+on:
+  push:
+    branches: [kickcrate-image-proxy]
+    paths:
+      - '.github/workflows/kickcrate-image-proxy.yml'
+      - 'kickcrate_proxy_trigger.txt'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/kickcrate-image-proxy.yml'
+      - 'kickcrate_proxy_trigger.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download audited catalogue artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -L --fail --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/Sanches019/CS/actions/artifacts/9369406250/zip" -o /tmp/catalog.zip
+          mkdir -p relay_data
+          unzip -q /tmp/catalog.zip -d relay_data
+          test -s relay_data/catalog.json
+      - name: Write relay server
+        run: |
+          cat > /tmp/relay.py <<'PY'
+          import json,re,requests
+          from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+          from urllib.parse import urlparse
+          data=json.load(open('relay_data/catalog.json',encoding='utf-8')); by_id={str(x['album_id']):x for x in data}; sess=requests.Session()
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145 Safari/537.36'
+          class H(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path=='/health': self.send_response(200); self.end_headers(); self.wfile.write(b'ok'); return
+                  m=re.fullmatch(r'/img/(\d+)/(\d+)',urlparse(self.path).path)
+                  if not m: self.send_error(404); return
+                  x=by_id.get(m.group(1)); idx=int(m.group(2))
+                  if not x or idx<0 or idx>=len(x.get('images',[])): self.send_error(404); return
+                  h={'User-Agent':UA,'Referer':x['source_url'],'Accept':'image/avif,image/webp,image/apng,image/*,*/*;q=0.8','Sec-Fetch-Mode':'no-cors','Sec-Fetch-Site':'same-site','Sec-Fetch-Dest':'image'}
+                  try:
+                      r=sess.get(x['images'][idx],headers=h,timeout=45)
+                      if r.status_code!=200 or not r.headers.get('content-type','').startswith('image/'): self.send_error(502,f'upstream {r.status_code}'); return
+                      self.send_response(200); self.send_header('Content-Type',r.headers.get('content-type','image/jpeg')); self.send_header('Content-Length',str(len(r.content))); self.send_header('Cache-Control','public,max-age=3600'); self.end_headers(); self.wfile.write(r.content)
+                  except Exception as e: self.send_error(502,str(e))
+              def log_message(self,fmt,*args): print(fmt%args,flush=True)
+          ThreadingHTTPServer(('0.0.0.0',8000),H).serve_forever()
+          PY
+          pip install -q requests
+      - name: Start relay and public tunnel
+        run: |
+          python /tmp/relay.py > /tmp/relay.log 2>&1 & echo $! > /tmp/relay.pid
+          for i in {1..20}; do curl -fsS http://127.0.0.1:8000/health && break; sleep 1; done
+          curl -L --fail --retry 3 "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64" -o /tmp/cloudflared
+          chmod +x /tmp/cloudflared
+          /tmp/cloudflared tunnel --url http://127.0.0.1:8000 --no-autoupdate > /tmp/cloudflared.log 2>&1 & echo $! > /tmp/cloudflared.pid
+          for i in {1..60}; do URL=$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/cloudflared.log | head -1 || true); if [ -n "$URL" ]; then echo "$URL" | tee relay-url.txt; break; fi; sleep 1; done
+          test -s relay-url.txt
+          URL=$(cat relay-url.txt); echo "RELAY_URL=$URL"; curl -fsS "$URL/health"; curl -fsS -o /tmp/probe.jpg "$URL/img/160463969/0"; file /tmp/probe.jpg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kickcrate-image-relay-url
+          path: relay-url.txt
+          retention-days: 1
+      - name: Keep relay available for Shopify ingestion
+        run: |
+          echo "Relay is live at $(cat relay-url.txt)"
+          for i in {1..360}; do sleep 60; kill -0 $(cat /tmp/relay.pid) || exit 1; kill -0 $(cat /tmp/cloudflared.pid) || exit 1; done
