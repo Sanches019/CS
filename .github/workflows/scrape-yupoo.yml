@@ -8,6 +8,8 @@ on:
       - 'scrape_yupoo.py'
       - 'requirements.txt'
       - '.github/workflows/scrape-yupoo.yml'
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
@@ -25,16 +27,6 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Scrape and audit source catalog
         run: python -u scrape_yupoo.py
-      - name: Commit audit output
-        if: always()
-        run: |
-          if [ -d out ] && [ "$(find out -type f | wc -l)" -gt 0 ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add out/
-            git commit -m "Update Yupoo football shirt catalog audit" || true
-            git push || true
-          fi
       - name: Upload catalog audit artifact
         if: always()
         uses: actions/upload-artifact@v4
