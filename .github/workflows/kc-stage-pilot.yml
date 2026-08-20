@@ -1,0 +1,22 @@
+name: KickCrate staged bulk pilot
+
+on:
+  pull_request:
+    paths:
+      - 'kc_stage_pilot.py'
+      - '.github/workflows/kc-stage-pilot.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - name: Upload signed Shopify bulk variables
+        run: python -u kc_stage_pilot.py

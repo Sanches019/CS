@@ -1,0 +1,43 @@
+name: Metadata QA titleless Yupoo albums
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'inspect_unresolved_album_metadata.py'
+      - '.github/workflows/unresolved-metadata-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  metadata-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Download exact unresolved audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p visual_input
+          curl --fail --location \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/9369406250/zip" \
+            --output /tmp/exact.zip
+          unzip -q /tmp/exact.zip -d visual_input
+      - name: Inspect album metadata
+        run: python -u inspect_unresolved_album_metadata.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yupoo-titleless-metadata-qa
+          path: metadata_qa.json
+          retention-days: 7

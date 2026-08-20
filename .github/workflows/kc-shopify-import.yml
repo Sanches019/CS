@@ -1,0 +1,86 @@
+name: KickCrate full Shopify shirt import
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - run-yupoo-fast-audit
+    paths:
+      - 'kc-import-trigger.txt'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: kickcrate-full-shopify-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    name: Import shard ${{ matrix.shard }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+
+    env:
+      SHOPIFY_STORE_DOMAIN: 0gi0f1-h7.myshopify.com
+      SHOPIFY_API_VERSION: '2026-07'
+      SHOPIFY_ADMIN_TOKEN: ${{ secrets.SHOPIFY_ADMIN_TOKEN }}
+      CATALOG_PATH: catalog_v3/resolved.json
+      SHARD_COUNT: '12'
+      SHARD_INDEX: ${{ matrix.shard }}
+      MAX_PRODUCTS: '0'
+      MAX_IMAGES_PER_PRODUCT: '0'
+      REPORT_DIR: import_reports
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Require Shopify token
+        shell: bash
+        run: |
+          if [ -z "${SHOPIFY_ADMIN_TOKEN}" ]; then
+            echo "::error::Missing repository secret SHOPIFY_ADMIN_TOKEN"
+            exit 1
+          fi
+
+      - run: pip install -r requirements.txt
+
+      - name: Download audited catalogue v3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p catalog_v3
+          curl --fail --location \
+            --retry 4 \
+            --retry-all-errors \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/9372214512/zip" \
+            --output /tmp/kickcrate-catalog-v3.zip
+          unzip -q /tmp/kickcrate-catalog-v3.zip -d catalog_v3
+          test -s catalog_v3/resolved.json
+
+      - name: Import products and galleries
+        run: python -u kc_shopify_import.py
+
+      - name: Upload import report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kickcrate-import-report-${{ matrix.shard }}
+          path: import_reports/
+          if-no-files-found: warn
+          retention-days: 14
