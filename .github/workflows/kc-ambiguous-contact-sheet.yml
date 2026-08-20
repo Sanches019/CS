@@ -1,0 +1,28 @@
+name: KickCrate ambiguous team image QA
+
+on:
+  push:
+    branches:
+      - run-yupoo-fast-audit
+    paths:
+      - 'kc_ambiguous_contact_sheet.py'
+      - '.github/workflows/kc-ambiguous-contact-sheet.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contact-sheet:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests pillow
+      - run: python -u kc_ambiguous_contact_sheet.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kickcrate-ambiguous-team-images
+          path: ambiguous_images/
+          retention-days: 2
