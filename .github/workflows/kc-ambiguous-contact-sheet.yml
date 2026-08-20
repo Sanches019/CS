@@ -7,6 +7,12 @@ on:
     paths:
       - 'kc_ambiguous_contact_sheet.py'
       - '.github/workflows/kc-ambiguous-contact-sheet.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'kc_ambiguous_contact_sheet.py'
+      - '.github/workflows/kc-ambiguous-contact-sheet.yml'
 
 permissions:
   contents: read
